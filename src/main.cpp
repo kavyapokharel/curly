@@ -1,7 +1,9 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
+
 #include "lexer.h"
 
 int main(int argc, char* argv[]) {
@@ -23,29 +25,44 @@ int main(int argc, char* argv[]) {
     };
 
     try {
-    Lexer lexer(input);
+        Lexer lexer(input);
+        Token current = lexer.nextToken();
 
-    // Our first parser accepts exactly: { } end-of-input.
-    auto expect = [&](TokenType expected, const char* description) {
-        const Token token = lexer.nextToken();
+        auto expect = [&](TokenType expected, const char* description) {
+            if (current.type != expected) {
+                throw std::runtime_error(
+                    std::string("Expected ") + description +
+                    " at byte " + std::to_string(current.position)
+                );
+            }
 
-        if (token.type != expected) {
-            throw std::runtime_error(
-                std::string("Expected ") + description +
-                " at byte " + std::to_string(token.position)
-            );
+            current = lexer.nextToken();
+        };
+
+        expect(TokenType::LeftBrace, "'{'");
+
+        if (current.type != TokenType::RightBrace) {
+            while (true) {
+                expect(TokenType::String, "a string key");
+                expect(TokenType::Colon, "':'");
+                expect(TokenType::String, "a string value");
+
+                if (current.type != TokenType::Comma) {
+                    break;
+                }
+
+                expect(TokenType::Comma, "','");
+            }
         }
-    };
 
-    expect(TokenType::LeftBrace, "'{'");
-    expect(TokenType::RightBrace, "'}'");
-    expect(TokenType::End, "end of input");
+        expect(TokenType::RightBrace, "'}'");
+        expect(TokenType::End, "end of input");
 
-    std::cout << "Valid JSON\n";
-} catch (const std::runtime_error& error) {
-    std::cerr << "Error: " << error.what() << '\n';
-    return 1;
-}
+        std::cout << "Valid JSON\n";
+    } catch (const std::runtime_error& error) {
+        std::cerr << "Error: " << error.what() << '\n';
+        return 1;
+    }
 
     return 0;
 }
