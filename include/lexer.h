@@ -58,6 +58,61 @@ private:
     std::string_view input_;
     std::size_t position_ = 0;
 
+    static bool isHexDigit(char c) {
+        return (c >= '0' && c <= '9') ||
+               (c >= 'a' && c <= 'f') ||
+               (c >= 'A' && c <= 'F');
+    }
+
+    void readEscape(std::size_t escapeStart) {
+        if (position_ == input_.size()) {
+            throw std::runtime_error(
+                "Incomplete escape sequence at byte " +
+                std::to_string(escapeStart)
+            );
+        }
+
+        const char escaped = input_[position_++];
+
+        switch (escaped) {
+            case '"':
+            case '\\':
+            case '/':
+            case 'b':
+            case 'f':
+            case 'n':
+            case 'r':
+            case 't':
+                return;
+
+            case 'u':
+                for (int i = 0; i < 4; ++i) {
+                    if (position_ == input_.size()) {
+                        throw std::runtime_error(
+                            "Incomplete Unicode escape at byte " +
+                            std::to_string(escapeStart)
+                        );
+                    }
+
+                    if (!isHexDigit(input_[position_])) {
+                        throw std::runtime_error(
+                            "Expected a hexadecimal digit at byte " +
+                            std::to_string(position_)
+                        );
+                    }
+
+                    ++position_;
+                }
+                return;
+
+            default:
+                throw std::runtime_error(
+                    "Invalid escape sequence at byte " +
+                    std::to_string(escapeStart)
+                );
+        }
+    }
+
     Token readString(std::size_t start) {
         while (position_ < input_.size()) {
             const char c = input_[position_++];
@@ -67,10 +122,8 @@ private:
             }
 
             if (c == '\\') {
-                throw std::runtime_error(
-                    "Escape sequences are not supported yet at byte " +
-                    std::to_string(position_ - 1)
-                );
+                readEscape(position_ - 1);
+                continue;
             }
 
             if (static_cast<unsigned char>(c) < 0x20) {
