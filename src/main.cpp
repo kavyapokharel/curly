@@ -39,13 +39,30 @@ int main(int argc, char* argv[]) {
             current = lexer.nextToken();
         };
 
+        auto parseValue = [&]() {
+            switch (current.type) {
+                case TokenType::String:
+                case TokenType::True:
+                case TokenType::False:
+                case TokenType::Null:
+                    current = lexer.nextToken();
+                    return;
+
+                default:
+                    throw std::runtime_error(
+                        "Expected a string, true, false, or null at byte " +
+                        std::to_string(current.position)
+                    );
+            }
+        };
+
         expect(TokenType::LeftBrace, "'{'");
 
         if (current.type != TokenType::RightBrace) {
             while (true) {
                 expect(TokenType::String, "a string key");
                 expect(TokenType::Colon, "':'");
-                expect(TokenType::String, "a string value");
+                parseValue();
 
                 if (current.type != TokenType::Comma) {
                     break;

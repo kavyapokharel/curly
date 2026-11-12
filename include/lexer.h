@@ -12,6 +12,9 @@ enum class TokenType {
     Colon,
     Comma,
     String,
+    True,
+    False,
+    Null,
     End
 };
 
@@ -22,8 +25,7 @@ struct Token {
 
 class Lexer {
 public:
-    explicit Lexer(std::string_view input)
-        : input_(input) {}
+    explicit Lexer(std::string_view input) : input_(input) {}
 
     Token nextToken() {
         skipWhitespace();
@@ -33,19 +35,17 @@ public:
         }
 
         const std::size_t start = position_;
-        const char character = input_[position_++];
+        const char c = input_[position_++];
 
-        switch (character) {
-            case '{':
-                return {TokenType::LeftBrace, start};
-            case '}':
-                return {TokenType::RightBrace, start};
-            case ':':
-                return {TokenType::Colon, start};
-            case ',':
-                return {TokenType::Comma, start};
-            case '"':
-                return readString(start);
+        switch (c) {
+            case '{': return {TokenType::LeftBrace, start};
+            case '}': return {TokenType::RightBrace, start};
+            case ':': return {TokenType::Colon, start};
+            case ',': return {TokenType::Comma, start};
+            case '"': return readString(start);
+            case 't': return readLiteral(start, "true", TokenType::True);
+            case 'f': return readLiteral(start, "false", TokenType::False);
+            case 'n': return readLiteral(start, "null", TokenType::Null);
             default:
                 throw std::runtime_error(
                     "Unexpected character at byte " +
@@ -58,10 +58,44 @@ private:
     std::string_view input_;
     std::size_t position_ = 0;
 
+    static bool isWhitespace(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    }
+
     static bool isHexDigit(char c) {
         return (c >= '0' && c <= '9') ||
                (c >= 'a' && c <= 'f') ||
                (c >= 'A' && c <= 'F');
+    }
+
+    Token readLiteral(
+        std::size_t start,
+        std::string_view word,
+        TokenType type
+    ) {
+        if (input_.substr(start, word.size()) != word) {
+            throw std::runtime_error(
+                "Expected '" + std::string(word) +
+                "' at byte " + std::to_string(start)
+            );
+        }
+
+        position_ = start + word.size();
+
+        // Reject words such as "truefalse" or "nullify".
+        if (position_ < input_.size()) {
+            const char next = input_[position_];
+
+            if (!isWhitespace(next) &&
+                next != ',' && next != '}' && next != ']') {
+                throw std::runtime_error(
+                    "Invalid character after '" + std::string(word) +
+                    "' at byte " + std::to_string(position_)
+                );
+            }
+        }
+
+        return {type, start};
     }
 
     void readEscape(std::size_t escapeStart) {
@@ -141,13 +175,8 @@ private:
     }
 
     void skipWhitespace() {
-        while (position_ < input_.size()) {
-            const char c = input_[position_];
-
-            if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
-                break;
-            }
-
+        while (position_ < input_.size() &&
+               isWhitespace(input_[position_])) {
             ++position_;
         }
     }
