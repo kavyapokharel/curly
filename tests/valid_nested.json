@@ -1,0 +1,12 @@
+{
+  "name": "Kavya",
+  "gpa": 4.0,
+  "active": true,
+  "skills": ["C++", "Python"],
+  "research": {
+    "samples": 102,
+    "error": null
+  },
+  "measurements": [0, -12, 3.14, 1.2e3, -2E-4],
+  "empty": [[], {}]
+}

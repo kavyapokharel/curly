@@ -7,14 +7,11 @@
 #include <string_view>
 
 enum class TokenType {
-    LeftBrace,
-    RightBrace,
-    Colon,
-    Comma,
-    String,
-    True,
-    False,
-    Null,
+    LeftBrace, RightBrace,
+    LeftBracket, RightBracket,
+    Colon, Comma,
+    String, Number,
+    True, False, Null,
     End
 };
 
@@ -40,6 +37,8 @@ public:
         switch (c) {
             case '{': return {TokenType::LeftBrace, start};
             case '}': return {TokenType::RightBrace, start};
+            case '[': return {TokenType::LeftBracket, start};
+            case ']': return {TokenType::RightBracket, start};
             case ':': return {TokenType::Colon, start};
             case ',': return {TokenType::Comma, start};
             case '"': return readString(start);
@@ -47,10 +46,11 @@ public:
             case 'f': return readLiteral(start, "false", TokenType::False);
             case 'n': return readLiteral(start, "null", TokenType::Null);
             default:
-                throw std::runtime_error(
-                    "Unexpected character at byte " +
-                    std::to_string(start)
-                );
+                if (c == '-' || isDigit(c)) {
+                    position_ = start;
+                    return readNumber(start);
+                }
+                fail("Unexpected character", start);
         }
     }
 
@@ -58,52 +58,112 @@ private:
     std::string_view input_;
     std::size_t position_ = 0;
 
+    [[noreturn]] static void fail(
+        const std::string& message, std::size_t position
+    ) {
+        throw std::runtime_error(
+            message + " at byte " + std::to_string(position)
+        );
+    }
+
+    static bool isDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
     static bool isWhitespace(char c) {
         return c == ' ' || c == '\t' || c == '\n' || c == '\r';
     }
 
     static bool isHexDigit(char c) {
-        return (c >= '0' && c <= '9') ||
+        return isDigit(c) ||
                (c >= 'a' && c <= 'f') ||
                (c >= 'A' && c <= 'F');
     }
 
+    bool hasDigit() const {
+        return position_ < input_.size() && isDigit(input_[position_]);
+    }
+
+    void checkValueBoundary() const {
+        if (position_ == input_.size()) {
+            return;
+        }
+
+        const char c = input_[position_];
+        if (!isWhitespace(c) && c != ',' && c != '}' && c != ']') {
+            fail("Unexpected character after value", position_);
+        }
+    }
+
     Token readLiteral(
-        std::size_t start,
-        std::string_view word,
-        TokenType type
+        std::size_t start, std::string_view word, TokenType type
     ) {
         if (input_.substr(start, word.size()) != word) {
-            throw std::runtime_error(
-                "Expected '" + std::string(word) +
-                "' at byte " + std::to_string(start)
-            );
+            fail("Expected '" + std::string(word) + "'", start);
         }
 
         position_ = start + word.size();
-
-        // Reject words such as "truefalse" or "nullify".
-        if (position_ < input_.size()) {
-            const char next = input_[position_];
-
-            if (!isWhitespace(next) &&
-                next != ',' && next != '}' && next != ']') {
-                throw std::runtime_error(
-                    "Invalid character after '" + std::string(word) +
-                    "' at byte " + std::to_string(position_)
-                );
-            }
-        }
-
+        checkValueBoundary();
         return {type, start};
     }
 
-    void readEscape(std::size_t escapeStart) {
+    Token readNumber(std::size_t start) {
+        if (input_[position_] == '-') {
+            ++position_;
+        }
+
+        if (!hasDigit()) {
+            fail("Expected a digit", position_);
+        }
+
+        if (input_[position_] == '0') {
+            ++position_;
+            if (hasDigit()) {
+                fail("Leading zeros are not allowed", position_);
+            }
+        } else {
+            while (hasDigit()) {
+                ++position_;
+            }
+        }
+
+        if (position_ < input_.size() && input_[position_] == '.') {
+            ++position_;
+
+            if (!hasDigit()) {
+                fail("Expected a digit after decimal point", position_);
+            }
+
+            while (hasDigit()) {
+                ++position_;
+            }
+        }
+
+        if (position_ < input_.size() &&
+            (input_[position_] == 'e' || input_[position_] == 'E')) {
+            ++position_;
+
+            if (position_ < input_.size() &&
+                (input_[position_] == '+' || input_[position_] == '-')) {
+                ++position_;
+            }
+
+            if (!hasDigit()) {
+                fail("Expected an exponent digit", position_);
+            }
+
+            while (hasDigit()) {
+                ++position_;
+            }
+        }
+
+        checkValueBoundary();
+        return {TokenType::Number, start};
+    }
+
+    void readEscape(std::size_t start) {
         if (position_ == input_.size()) {
-            throw std::runtime_error(
-                "Incomplete escape sequence at byte " +
-                std::to_string(escapeStart)
-            );
+            fail("Incomplete escape sequence", start);
         }
 
         const char escaped = input_[position_++];
@@ -122,28 +182,17 @@ private:
             case 'u':
                 for (int i = 0; i < 4; ++i) {
                     if (position_ == input_.size()) {
-                        throw std::runtime_error(
-                            "Incomplete Unicode escape at byte " +
-                            std::to_string(escapeStart)
-                        );
+                        fail("Incomplete Unicode escape", start);
                     }
-
                     if (!isHexDigit(input_[position_])) {
-                        throw std::runtime_error(
-                            "Expected a hexadecimal digit at byte " +
-                            std::to_string(position_)
-                        );
+                        fail("Expected a hexadecimal digit", position_);
                     }
-
                     ++position_;
                 }
                 return;
 
             default:
-                throw std::runtime_error(
-                    "Invalid escape sequence at byte " +
-                    std::to_string(escapeStart)
-                );
+                fail("Invalid escape sequence", start);
         }
     }
 
@@ -161,17 +210,11 @@ private:
             }
 
             if (static_cast<unsigned char>(c) < 0x20) {
-                throw std::runtime_error(
-                    "Unescaped control character at byte " +
-                    std::to_string(position_ - 1)
-                );
+                fail("Unescaped control character", position_ - 1);
             }
         }
 
-        throw std::runtime_error(
-            "Unterminated string starting at byte " +
-            std::to_string(start)
-        );
+        fail("Unterminated string starting", start);
     }
 
     void skipWhitespace() {

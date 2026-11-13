@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "lexer.h"
+#include "parser.h"
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -19,67 +19,23 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::string input{
-        std::istreambuf_iterator<char>(file),
-        std::istreambuf_iterator<char>()
-    };
-
     try {
-        Lexer lexer(input);
-        Token current = lexer.nextToken();
-
-        auto expect = [&](TokenType expected, const char* description) {
-            if (current.type != expected) {
-                throw std::runtime_error(
-                    std::string("Expected ") + description +
-                    " at byte " + std::to_string(current.position)
-                );
-            }
-
-            current = lexer.nextToken();
+        const std::string input{
+            std::istreambuf_iterator<char>(file),
+            std::istreambuf_iterator<char>()
         };
 
-        auto parseValue = [&]() {
-            switch (current.type) {
-                case TokenType::String:
-                case TokenType::True:
-                case TokenType::False:
-                case TokenType::Null:
-                    current = lexer.nextToken();
-                    return;
-
-                default:
-                    throw std::runtime_error(
-                        "Expected a string, true, false, or null at byte " +
-                        std::to_string(current.position)
-                    );
-            }
-        };
-
-        expect(TokenType::LeftBrace, "'{'");
-
-        if (current.type != TokenType::RightBrace) {
-            while (true) {
-                expect(TokenType::String, "a string key");
-                expect(TokenType::Colon, "':'");
-                parseValue();
-
-                if (current.type != TokenType::Comma) {
-                    break;
-                }
-
-                expect(TokenType::Comma, "','");
-            }
+        if (file.bad()) {
+            throw std::runtime_error("Failed to read input file");
         }
 
-        expect(TokenType::RightBrace, "'}'");
-        expect(TokenType::End, "end of input");
+        Parser parser(input);
+        parser.parse();
 
         std::cout << "Valid JSON\n";
-    } catch (const std::runtime_error& error) {
+        return 0;
+    } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
-
-    return 0;
 }
