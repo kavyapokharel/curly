@@ -11,3 +11,9 @@ json-parser: src/main.cpp include/lexer.h include/parser.h
 
 test:
 	bash tests/run_tests.sh
+
+.PHONY: test-values
+
+test-values:
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) tests/test_json_value.cpp -o /tmp/curly-value-tests
+	/tmp/curly-value-tests
